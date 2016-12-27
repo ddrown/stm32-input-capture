@@ -16,11 +16,11 @@
 
 struct i2c_registers_type {
   uint32_t milliseconds_now;
-  uint32_t milliseconds_irq;
-  uint16_t tim3_at_irq;
-  uint16_t tim1_at_irq;
-  uint16_t tim3_at_cap;
-  uint16_t source_HZ;
+  uint32_t milliseconds_irq_ch1;
+  uint16_t tim3_at_irq[3];
+  uint16_t tim1_at_irq[3];
+  uint16_t tim3_at_cap[3];
+  uint16_t source_HZ_ch1;
 };
 
 void print_ppm(float ppm) {
@@ -93,13 +93,13 @@ uint8_t cycles_wrap(uint32_t *this_cycles, uint32_t previous_cycles, int32_t *di
   uint8_t wrap = 0;
   *diff = *this_cycles - previous_cycles - EXPECTED_FREQ;
 
-  if(i2c_registers->tim3_at_cap > i2c_registers->tim3_at_irq) {
+  if(i2c_registers->tim3_at_cap[0] > i2c_registers->tim3_at_irq[0]) {
     if(*diff > 41535) { // allow for +/-500ppm
       wrap = 1;
       *this_cycles -= 65536;
       *diff -= 65536;
     }
-  } else if(i2c_registers->tim3_at_cap > 65400) { // check for wrap if it's close
+  } else if(i2c_registers->tim3_at_cap[0] > 65300) { // check for wrap if it's close
     if(*diff > 41535) { // allow for +/-500ppm
       wrap = 3;
       *this_cycles -= 65536;
@@ -165,21 +165,21 @@ int main() {
     uint8_t wrap = 0;
     int16_t number_points;
 
-    read_i2c(fd, &i2c_registers, 16);
+    read_i2c(fd, &i2c_registers, sizeof(i2c_registers));
 
     // was there no new data?
-    if(i2c_registers.milliseconds_irq == last_timestamp) {
+    if(i2c_registers.milliseconds_irq_ch1 == last_timestamp) {
       printf("no new data\n");
       first_cycle_index = last_cycle_index = 0; // reset because we missed a cycle
       usleep(995000);
       continue;
     }
-    last_timestamp = i2c_registers.milliseconds_irq;
-    sleep_ms = calculate_sleep_ms(i2c_registers.milliseconds_now, i2c_registers.milliseconds_irq);
+    last_timestamp = i2c_registers.milliseconds_irq_ch1;
+    sleep_ms = calculate_sleep_ms(i2c_registers.milliseconds_now, i2c_registers.milliseconds_irq_ch1);
 
     // combine tim1 & tim3
-    this_cycles = ((uint32_t)i2c_registers.tim1_at_irq) << 16;
-    this_cycles += i2c_registers.tim3_at_cap;
+    this_cycles = ((uint32_t)i2c_registers.tim1_at_irq[0]) << 16;
+    this_cycles += i2c_registers.tim3_at_cap[0];
 
     // check for tim3 wrap if we have a previous count
     if((last_cycle_index != first_cycle_index) || (previous_cycles > 0)) {
@@ -198,7 +198,7 @@ int main() {
 
     // aim for 5ms after the event
     printf("%lu %u %u %u %u ", time(NULL),
-       i2c_registers.milliseconds_now - i2c_registers.milliseconds_irq,
+       i2c_registers.milliseconds_now - i2c_registers.milliseconds_irq_ch1,
        wrap, this_cycles, number_points
        );
     print_timespec(&cycles[last_cycle_index]);

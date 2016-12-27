@@ -12,7 +12,7 @@ void i2c_data_xmt(I2C_HandleTypeDef *hi2c);
 void i2c_slave_start() {
   memset(&i2c_registers, '\0', sizeof(i2c_registers));
 
-  i2c_registers.source_HZ = DEFAULT_SOURCE_HZ;
+  i2c_registers.source_HZ_ch1 = DEFAULT_SOURCE_HZ;
 
   HAL_I2C_EnableListen_IT(&hi2c1);
 }
