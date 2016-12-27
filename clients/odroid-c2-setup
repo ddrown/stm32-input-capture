@@ -1,0 +1,8 @@
+#!/bin/sh
+
+modprobe pwm_meson
+modprobe pwm_ctrl
+
+echo 512 >/sys/bus/platform/devices/pwm-ctrl/duty0
+echo 1 >/sys/bus/platform/devices/pwm-ctrl/enable0
+echo 50 >/sys/bus/platform/devices/pwm-ctrl/freq0
