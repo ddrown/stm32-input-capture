@@ -1,3 +1,7 @@
+# STM32 three input channel timer
+
+Hardware is a stm32f030f4p6 with 12MHz TCXO, communication is via i2c.
+
 Depends on make and arm-none-eabi-gcc being in your path.
 
 arm-none-eabi-gcc should come with newlib (or other embedded c library)
@@ -9,7 +13,7 @@ arm-none-eabi-gcc should come with newlib (or other embedded c library)
 Use STM32CubeMX to view the pinout
 
  * Src/i2c\_slave.c - i2c slave
- * Src/timer.c - hardware timers driving 1PPS (TIM3 = drives PPS output, TIM1 = overflows@1khz and drives TIM3), TIM14 is configured for 1PPS but not used
+ * Src/timer.c - hardware timers measuring input capture (tim3 - runs at 48MHz, tim1 - uses tim3 as prescaler, combined they're effectively a 32bit counter) tim3 channels 1, 2, and 4 are used as input capture
  * Src/uart.c - uart print and receive
  * Src/main.c - setup and main loop
  * Src/stm32f0xx\_hal\_msp.c - auto-generated GPIO mapping code
@@ -17,6 +21,4 @@ Use STM32CubeMX to view the pinout
 
 Clocks are setup for 12MHz HSE (bypass not crystal) and 48MHz PLL
 
-Hardware is a stm32f030f4p6 with 12MHz TCXO, communication is via i2c. Debug output is on the uart
-
-Example i2c client program (for running on a Raspberry Pi or other Linux SBC) is in i2c-read.c
+Example i2c client program (for running on a Raspberry Pi or other Linux SBC) is in clients/
