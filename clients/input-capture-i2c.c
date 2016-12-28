@@ -19,6 +19,8 @@
 // TODO: keep an estimate of this offset?
 #define AVERAGE_PPB_TCXO 3271
 #define AIM_AFTER_MS 5
+#define TCXO_TEMPCOMP_TEMPFILE "/run/.tcxo"
+#define TCXO_TEMPCOMP_FILE "/run/tcxo"
 
 struct i2c_registers_type {
   uint32_t milliseconds_now;
@@ -49,14 +51,15 @@ void write_tcxo_ppm(float ppm) {
     return;
   }
 
-  tcxo = fopen("/run/.tcxo","w");
+  tcxo = fopen(TCXO_TEMPCOMP_TEMPFILE,"w");
   if(tcxo == NULL) {
-    perror("fopen /run/.tcxo");
+    perror("fopen " TCXO_TEMPCOMP_TEMPFILE);
     exit(1);
   }
   fprintf(tcxo, "%1.3f\n", ppm);
   fclose(tcxo);
-  rename("/run/.tcxo","/run/tcxo");
+  rename(TCXO_TEMPCOMP_TEMPFILE, TCXO_TEMPCOMP_FILE);
+
   printf("%1.3f ", ppm);
 }
 
