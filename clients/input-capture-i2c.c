@@ -9,6 +9,8 @@
 #include "i2c.h"
 #include "timespec.h"
 
+// current code assumptions: channel 1 never stops, channel 2 is the standard to use
+
 #define I2C_ADDR 0x4
 #define EXPECTED_FREQ 48000000
 #define AVERAGING_CYCLES 129
@@ -16,11 +18,15 @@
 #define INPUT_CHANNELS 3
 // TODO: allow the average ppm to be detected or configured
 #define AVERAGE_PPM 20.465
-// TODO: keep an estimate of this offset?
-#define AVERAGE_PPB_TCXO 3271
 #define AIM_AFTER_MS 5
 #define TCXO_TEMPCOMP_TEMPFILE "/run/.tcxo"
 #define TCXO_TEMPCOMP_FILE "/run/tcxo"
+
+// status_flags bitfields
+#define STATUS_CH1_WRAPS       0b11
+#define STATUS_CH2_WRAPS     0b1100
+#define STATUS_CH3_WRAPS   0b110000
+#define STATUS_CH2_FAILED 0b1000000
 
 struct i2c_registers_type {
   uint32_t milliseconds_now;
@@ -43,8 +49,6 @@ void write_tcxo_ppm(float ppm) {
   FILE *tcxo;
 
   ppm = ppm - AVERAGE_PPM;
-
-  //ppm = ppm * 0.5; // reduce tempcomp effect by 50%
 
   if(ppm > 10 || ppm < -10) {
     printf("- ");
@@ -188,20 +192,22 @@ void combine_tim1_tim3(uint32_t *this_cycles, const struct i2c_registers_type *i
 // modifies sleep_ms
 // at 500ppm, this estimates the next update within 0.5ms
 void adjust_sleep_ms(uint32_t *sleep_ms, const uint32_t *this_cycles) {
-  uint32_t aiming_cycles = EXPECTED_FREQ / 1000 * AIM_AFTER_MS;
+  int32_t aiming_cycles = EXPECTED_FREQ / 1000 * AIM_AFTER_MS;
   uint32_t estimated_cycles_after_sleep = this_cycles[0] + EXPECTED_FREQ + aiming_cycles;
+  int32_t negative_margin = aiming_cycles - EXPECTED_FREQ;
 
   for(uint8_t i = 0; i < INPUT_CHANNELS; i++) {
     uint32_t estimated_cycles = this_cycles[i] + EXPECTED_FREQ;
     int32_t diff_cycles = estimated_cycles-estimated_cycles_after_sleep;
 
-    if(diff_cycles > EXPECTED_FREQ - aiming_cycles) {
-      diff_cycles -= EXPECTED_FREQ;
+    if(diff_cycles < negative_margin) { // if we're looking at the wrong edge, adjust it forward 1 second
+      diff_cycles += EXPECTED_FREQ;
     }
     if(abs(diff_cycles) < aiming_cycles) {
       // if it's expected within the +/-AIM_AFTER_MS window, move the window forward
       estimated_cycles_after_sleep += aiming_cycles;
       *sleep_ms += AIM_AFTER_MS;
+      // TODO: should this restart the window calculation?
     }
   }
 }
@@ -217,11 +223,12 @@ int main() {
  
   fd = open_i2c(I2C_ADDR); 
 
-  printf("ts delay wrap sleepms cycles1 cycles2 cycles3 #pts ch1 ch2 ch3 t.offset 16s_ppm 64s_ppm 128s_ppm tempcomp\n");
+  printf("ts delay status sleepms cycles1 cycles2 cycles3 #pts ch1 ch2 ch3 t.offset 16s_ppm 64s_ppm 128s_ppm tempcomp\n");
   while(1) {
     double added_offset_ns[INPUT_CHANNELS];
     uint32_t sleep_ms, this_cycles[INPUT_CHANNELS];
     uint8_t wrap[INPUT_CHANNELS] = {0,0,0};
+    uint32_t status_flags;
     int16_t number_points;
 
     read_i2c(fd, &i2c_registers, sizeof(i2c_registers));
@@ -251,34 +258,49 @@ int main() {
     // estimate position of ch2/ch3 and modify sleep_ms if they're within 2ms of polling
     adjust_sleep_ms(&sleep_ms, this_cycles);
 
+    status_flags = 0;
+
     // consider channel 2 "absolute" and the other two as relative to it as long as chan2 is within 10ppm
     if(added_offset_ns[1] > -10000 && added_offset_ns[1] < 10000) {
       added_offset_ns[0] -= added_offset_ns[1];
       added_offset_ns[2] -= added_offset_ns[1];
-    } else { // fall back to the configured PPB offset
-      added_offset_ns[0] -= AVERAGE_PPB_TCXO;
-      added_offset_ns[2] -= AVERAGE_PPB_TCXO;
+      add_offset_cycles(added_offset_ns[0], cycles, &first_cycle_index, &last_cycle_index);
+    } else {
+      status_flags |= STATUS_CH2_FAILED;
+      if(last_cycle_index != first_cycle_index) { // remove 1s from circle if there is one to remove
+        first_cycle_index = (first_cycle_index + 1) % AVERAGING_CYCLES;
+      }
     }
-    add_offset_cycles(added_offset_ns[0], cycles, &first_cycle_index, &last_cycle_index);
 
     number_points = wrap_sub(last_cycle_index, first_cycle_index, AVERAGING_CYCLES);
+    status_flags |= (wrap[0] | wrap[1] << 2 | wrap[3] << 4);
 
-    printf("%lu %u %u %u %u %u %u %u %0.0f %0.0f %0.0f ",
+    printf("%lu %u %x %u %u %u %u %u ",
        time(NULL),
        i2c_registers.milliseconds_now - i2c_registers.milliseconds_irq_ch1,
-       (wrap[0] | wrap[1] << 2 | wrap[3] << 4), 
+       status_flags,
        sleep_ms,
        this_cycles[0], this_cycles[1], this_cycles[2],
-       number_points, 
-       added_offset_ns[0], added_offset_ns[1], added_offset_ns[2]
+       number_points
        );
+    if(status_flags&STATUS_CH2_FAILED) { // added_offset_ns values are wrong
+      printf("- - - ");
+    } else {
+      printf("%0.0f %0.0f %0.0f ",
+	  added_offset_ns[0], added_offset_ns[1], added_offset_ns[2]
+	  );
+    }
     print_timespec(&cycles[last_cycle_index]);
     printf(" ");
 
     show_ppm(number_points, last_cycle_index, 16, cycles);
     show_ppm(number_points, last_cycle_index, 64, cycles);
     float ppm = show_ppm(number_points, last_cycle_index, AVERAGING_CYCLES-1, cycles);
-    write_tcxo_ppm(ppm);
+    if(!(status_flags&STATUS_CH2_FAILED)) { // don't update tempcomp if CH2 data is invalid
+      write_tcxo_ppm(ppm);
+    } else {
+      printf("- ");
+    }
 
     printf("\n");
     fflush(stdout);
