@@ -25,7 +25,6 @@ BUILD_DIR = build
 # source
 ######################################
 C_SOURCES = \
-  Drivers/CMSIS/Device/ST/STM32F0xx/Source/Templates/system_stm32f0xx.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_cortex.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_dma.c \
@@ -44,6 +43,7 @@ C_SOURCES = \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_tim_ex.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_uart.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_uart_ex.c \
+  Src/system_stm32f0xx.c \
   Src/main.c \
   Src/stm32f0xx_hal_msp.c \
   Src/stm32f0xx_it.c \
