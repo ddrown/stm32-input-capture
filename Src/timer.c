@@ -33,14 +33,28 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 	counts_ch1 = i2c_registers.source_HZ_ch1 = DEFAULT_SOURCE_HZ;
       }
     }
+    if(__HAL_TIM_GET_FLAG(htim, TIM_FLAG_CC1OF)) { // there was an overflow event
+      // don't consider this as the normal counts_ch1, as it shouldn't happen at low frequencies
+      __HAL_TIM_CLEAR_FLAG(htim, TIM_FLAG_CC1OF);
+    }
   } else if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {
     i2c_registers.tim3_at_irq[1] = tim3_at_irq;
     i2c_registers.tim1_at_irq[1] = tim1_at_irq;
     i2c_registers.tim3_at_cap[1] = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_2);
+    i2c_registers.ch2_count++;
+    if(__HAL_TIM_GET_FLAG(htim, TIM_FLAG_CC2OF)) { // there was an overflow event
+      i2c_registers.ch2_count++;
+      __HAL_TIM_CLEAR_FLAG(htim, TIM_FLAG_CC2OF);
+    }
   } else if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_4) {
     i2c_registers.tim3_at_irq[2] = tim3_at_irq;
     i2c_registers.tim1_at_irq[2] = tim1_at_irq;
     i2c_registers.tim3_at_cap[2] = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_4);
+    i2c_registers.ch4_count++;
+    if(__HAL_TIM_GET_FLAG(htim, TIM_FLAG_CC4OF)) { // there was an overflow event
+      i2c_registers.ch4_count++;
+      __HAL_TIM_CLEAR_FLAG(htim, TIM_FLAG_CC4OF);
+    }
   }
 }
 

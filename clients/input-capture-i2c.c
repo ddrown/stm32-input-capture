@@ -35,6 +35,8 @@ struct i2c_registers_type {
   uint16_t tim1_at_irq[INPUT_CHANNELS];
   uint16_t tim3_at_cap[INPUT_CHANNELS];
   uint16_t source_HZ_ch1;
+  uint8_t ch2_count;
+  uint8_t ch4_count;
 };
 
 void print_ppm(float ppm) {
@@ -223,7 +225,7 @@ int main() {
  
   fd = open_i2c(I2C_ADDR); 
 
-  printf("ts delay status sleepms cycles1 cycles2 cycles3 #pts ch1 ch2 ch3 t.offset 16s_ppm 64s_ppm 128s_ppm tempcomp\n");
+  printf("ts delay status sleepms cycles1 cycles2 cycles3 #pts ch1 ch2 ch3 ch2.c ch3.c t.offset 16s_ppm 64s_ppm 128s_ppm tempcomp\n");
   while(1) {
     double added_offset_ns[INPUT_CHANNELS];
     uint32_t sleep_ms, this_cycles[INPUT_CHANNELS];
@@ -290,6 +292,7 @@ int main() {
 	  added_offset_ns[0], added_offset_ns[1], added_offset_ns[2]
 	  );
     }
+    printf("%u %u ", i2c_registers.ch2_count, i2c_registers.ch4_count);
     print_timespec(&cycles[last_cycle_index]);
     printf(" ");
 
