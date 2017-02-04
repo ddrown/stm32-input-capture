@@ -1,0 +1,3 @@
+#!/bin/sh
+
+echo 0x51 >/sys/class/i2c-dev/i2c-1/device/delete_device

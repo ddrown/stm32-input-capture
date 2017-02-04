@@ -1,5 +1,11 @@
 input-capture-i2c: input-capture-i2c.c i2c.c timespec.c
-	gcc -Wall -o input-capture-i2c input-capture-i2c.c i2c.c timespec.c
+	gcc -Wall -std=gnu11 -o input-capture-i2c input-capture-i2c.c i2c.c timespec.c
+
+pi-pwm-setup: pi-pwm-setup.c
+	gcc -Wall -std=gnu11 -o pi-pwm-setup pi-pwm-setup.c -lwiringPi
 
 ds3231: ds3231.c i2c.c
-	gcc -Wall -o ds3231 ds3231.c i2c.c
+	gcc -Wall -std=gnu11 -o ds3231 ds3231.c i2c.c
+
+pcf2129: pcf2129.c i2c.c
+	gcc -Wall -std=gnu11 -o pcf2129 pcf2129.c i2c.c

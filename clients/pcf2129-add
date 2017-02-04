@@ -1,0 +1,3 @@
+#!/bin/sh
+
+echo pcf2127 0x51 >/sys/class/i2c-dev/i2c-1/device/new_device
