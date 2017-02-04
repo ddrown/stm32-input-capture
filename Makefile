@@ -26,6 +26,8 @@ BUILD_DIR = build
 ######################################
 C_SOURCES = \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal.c \
+  Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_adc.c \
+  Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_adc_ex.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_cortex.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_dma.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_flash.c \
@@ -37,19 +39,17 @@ C_SOURCES = \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_pwr_ex.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_rcc.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_rcc_ex.c \
-  Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_rtc.c \
-  Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_rtc_ex.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_tim.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_tim_ex.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_uart.c \
   Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_uart_ex.c \
-  Src/system_stm32f0xx.c \
+  Src/i2c_slave.c \
   Src/main.c \
   Src/stm32f0xx_hal_msp.c \
   Src/stm32f0xx_it.c \
-  Src/uart.c \
+  Src/system_stm32f0xx.c \
   Src/timer.c \
-  Src/i2c_slave.c
+  Src/uart.c  
 ASM_SOURCES = \
   Drivers/CMSIS/Device/ST/STM32F0xx/Source/Templates/gcc/startup_stm32f030x6.s
 
@@ -124,13 +124,9 @@ $(BUILD_DIR)/%.hex: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
 	
 $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
 	$(BIN) $< $@	
-	ls -l $@
 	
 $(BUILD_DIR):
 	mkdir -p $@		
-
-flash: $(BUILD_DIR)/$(TARGET).bin
-	ST-LINK_CLI -c SWD -P $< 0x8000000 -Rst -Run </dev/null
 
 #######################################
 # clean up
@@ -143,6 +139,6 @@ clean:
 #######################################
 -include $(shell mkdir .dep 2>/dev/null) $(wildcard .dep/*)
 
-.PHONY: clean all flash
+.PHONY: clean all
 
 # *** EOF ***
