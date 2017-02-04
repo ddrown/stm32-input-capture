@@ -13,11 +13,11 @@
 
 #define I2C_ADDR 0x4
 #define EXPECTED_FREQ 48000000
-#define AVERAGING_CYCLES 129
+#define AVERAGING_CYCLES 65
 #define PPM_INVALID -1000000.0
 #define INPUT_CHANNELS 3
 // TODO: allow the average ppm to be detected or configured
-#define AVERAGE_PPM 20.465
+#define AVERAGE_PPM 0.0
 #define AIM_AFTER_MS 5
 #define TCXO_TEMPCOMP_TEMPFILE "/run/.tcxo"
 #define TCXO_TEMPCOMP_FILE "/run/tcxo"
@@ -275,7 +275,7 @@ int main() {
     }
 
     number_points = wrap_sub(last_cycle_index, first_cycle_index, AVERAGING_CYCLES);
-    status_flags |= (wrap[0] | wrap[1] << 2 | wrap[3] << 4);
+    status_flags = status_flags | (wrap[0] & STATUS_CH1_WRAPS) | ((wrap[1] << 2) & STATUS_CH2_WRAPS) | ((wrap[3] << 4) & STATUS_CH3_WRAPS);
 
     printf("%lu %u %x %u %u %u %u %u ",
        time(NULL),
@@ -286,7 +286,7 @@ int main() {
        number_points
        );
     if(status_flags&STATUS_CH2_FAILED) { // added_offset_ns values are wrong
-      printf("- - - ");
+      printf("- %0.0f - ", added_offset_ns[1]);
     } else {
       printf("%0.0f %0.0f %0.0f ",
 	  added_offset_ns[0], added_offset_ns[1], added_offset_ns[2]
@@ -297,7 +297,7 @@ int main() {
     printf(" ");
 
     show_ppm(number_points, last_cycle_index, 16, cycles);
-    show_ppm(number_points, last_cycle_index, 64, cycles);
+    show_ppm(number_points, last_cycle_index, 32, cycles);
     float ppm = show_ppm(number_points, last_cycle_index, AVERAGING_CYCLES-1, cycles);
     if(!(status_flags&STATUS_CH2_FAILED)) { // don't update tempcomp if CH2 data is invalid
       write_tcxo_ppm(ppm);
