@@ -128,6 +128,9 @@ $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
 $(BUILD_DIR):
 	mkdir -p $@		
 
+flash: $(BUILD_DIR)/$(TARGET).bin
+	sudo openocd
+
 #######################################
 # clean up
 #######################################
@@ -139,6 +142,6 @@ clean:
 #######################################
 -include $(shell mkdir .dep 2>/dev/null) $(wildcard .dep/*)
 
-.PHONY: clean all
+.PHONY: clean all flash
 
 # *** EOF ***
