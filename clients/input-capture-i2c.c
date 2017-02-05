@@ -8,14 +8,13 @@
 
 #include "i2c.h"
 #include "timespec.h"
+#include "i2c_registers.h"
+#include "adc_calc.h"
 
 // current code assumptions: channel 1 never stops, channel 2 is the standard to use
 
-#define I2C_ADDR 0x4
-#define EXPECTED_FREQ 48000000
 #define AVERAGING_CYCLES 65
 #define PPM_INVALID -1000000.0
-#define INPUT_CHANNELS 3
 // TODO: allow the average ppm to be detected or configured
 #define AVERAGE_PPM 0.0
 #define AIM_AFTER_MS 5
@@ -27,17 +26,6 @@
 #define STATUS_CH2_WRAPS     0b1100
 #define STATUS_CH3_WRAPS   0b110000
 #define STATUS_CH2_FAILED 0b1000000
-
-struct i2c_registers_type {
-  uint32_t milliseconds_now;
-  uint32_t milliseconds_irq_ch1;
-  uint16_t tim3_at_irq[INPUT_CHANNELS];
-  uint16_t tim1_at_irq[INPUT_CHANNELS];
-  uint16_t tim3_at_cap[INPUT_CHANNELS];
-  uint16_t source_HZ_ch1;
-  uint8_t ch2_count;
-  uint8_t ch4_count;
-};
 
 void print_ppm(float ppm) {
   if(ppm < 500 && ppm > -500) {
@@ -220,12 +208,15 @@ int main() {
   uint16_t first_cycle_index = 0, last_cycle_index = 0;
   uint32_t last_timestamp = 0;
   struct i2c_registers_type i2c_registers;
+  struct i2c_registers_type_page2 i2c_registers_page2;
 
   memset(cycles, '\0', sizeof(cycles));
  
   fd = open_i2c(I2C_ADDR); 
 
-  printf("ts delay status sleepms cycles1 cycles2 cycles3 #pts ch1 ch2 ch3 ch2.c ch3.c t.offset 16s_ppm 64s_ppm 128s_ppm tempcomp\n");
+  printf("ts delay status sleepms cycles1 cycles2 cycles3 #pts ch1 ch2 ch3 ch2.c ch3.c t.offset 16s_ppm 64s_ppm 128s_ppm tempcomp ");
+  adc_header();
+  printf("\n");
   while(1) {
     double added_offset_ns[INPUT_CHANNELS];
     uint32_t sleep_ms, this_cycles[INPUT_CHANNELS];
@@ -233,7 +224,8 @@ int main() {
     uint32_t status_flags;
     int16_t number_points;
 
-    read_i2c(fd, &i2c_registers, sizeof(i2c_registers));
+    get_i2c_structs(fd, &i2c_registers, &i2c_registers_page2);
+    add_adc_data(&i2c_registers, &i2c_registers_page2);
 
     // was there no new data?
     if(i2c_registers.milliseconds_irq_ch1 == last_timestamp) {
@@ -277,7 +269,7 @@ int main() {
     number_points = wrap_sub(last_cycle_index, first_cycle_index, AVERAGING_CYCLES);
     status_flags = status_flags | (wrap[0] & STATUS_CH1_WRAPS) | ((wrap[1] << 2) & STATUS_CH2_WRAPS) | ((wrap[3] << 4) & STATUS_CH3_WRAPS);
 
-    printf("%lu %u %x %u %u %u %u %u ",
+    printf("%lu %2u %3x %4u %10u %10u %10u %2u ",
        time(NULL),
        i2c_registers.milliseconds_now - i2c_registers.milliseconds_irq_ch1,
        status_flags,
@@ -286,13 +278,13 @@ int main() {
        number_points
        );
     if(status_flags&STATUS_CH2_FAILED) { // added_offset_ns values are wrong
-      printf("- %0.0f - ", added_offset_ns[1]);
+      printf("  - %3.0f   - ", added_offset_ns[1]);
     } else {
-      printf("%0.0f %0.0f %0.0f ",
+      printf("%3.0f %3.0f %3.0f ",
 	  added_offset_ns[0], added_offset_ns[1], added_offset_ns[2]
 	  );
     }
-    printf("%u %u ", i2c_registers.ch2_count, i2c_registers.ch4_count);
+    printf("%3u %3u ", i2c_registers.ch2_count, i2c_registers.ch4_count);
     print_timespec(&cycles[last_cycle_index]);
     printf(" ");
 
@@ -305,6 +297,7 @@ int main() {
       printf("- ");
     }
 
+    adc_print();
     printf("\n");
     fflush(stdout);
 

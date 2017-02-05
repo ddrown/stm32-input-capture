@@ -20,7 +20,7 @@ void write_i2c(int fd, void *buffer, ssize_t len) {
     exit(1);
   }
   if(status != len) {
-    printf("write not %lu bytes: %lu\n", len, status);
+    printf("write not %zu bytes: %zu\n", len, status);
     exit(1);
   }
 }
@@ -34,7 +34,7 @@ void read_i2c(int fd, void *buffer, ssize_t len) {
     exit(1);
   }
   if(status != len) {
-    printf("read not %lu bytes: %lu\n", len, status);
+    printf("read not %zu bytes: %zu\n", len, status);
     exit(1);
   }
 }
