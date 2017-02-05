@@ -49,7 +49,8 @@ C_SOURCES = \
   Src/stm32f0xx_it.c \
   Src/system_stm32f0xx.c \
   Src/timer.c \
-  Src/uart.c  
+  Src/uart.c \
+  Src/adc.c
 ASM_SOURCES = \
   Drivers/CMSIS/Device/ST/STM32F0xx/Source/Templates/gcc/startup_stm32f030x6.s
 

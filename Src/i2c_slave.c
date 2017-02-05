@@ -6,16 +6,20 @@
 #include "timer.h"
 
 struct i2c_registers_type i2c_registers;
+struct i2c_registers_type_page2 i2c_registers_page2;
 
-void i2c_data_xmt(I2C_HandleTypeDef *hi2c);
+static void *current_page = &i2c_registers;
 
-void i2c_slave_start() {
-  memset(&i2c_registers, '\0', sizeof(i2c_registers));
+static void i2c_data_xmt(I2C_HandleTypeDef *hi2c);
 
-  i2c_registers.source_HZ_ch1 = DEFAULT_SOURCE_HZ;
+static uint8_t i2c_transfer_position;
+enum {STATE_WAITING, STATE_GET_ADDR, STATE_GET_DATA, STATE_SEND_DATA, STATE_DROP_DATA} i2c_transfer_state;
+static uint8_t i2c_data;
 
-  HAL_I2C_EnableListen_IT(&hi2c1);
-}
+// addresses from the STM32F030 datasheet
+uint16_t *ts_cal1 = (uint16_t *)0x1ffff7b8;
+uint16_t *ts_cal2 = (uint16_t *)0x1ffff7c2;
+uint16_t *vrefint_cal = (uint16_t *)0x1ffff7ba;
 
 #undef COUNT_I2C
 
@@ -26,10 +30,26 @@ static uint32_t counter_addr, counter_data_rcv, counter_rxcplt, counter_txcplt, 
 #define ADD_COUNT_I2C(counter)
 #endif
 
+void i2c_slave_start() {
+  memset(&i2c_registers, '\0', sizeof(i2c_registers));
 
-static uint8_t i2c_transfer_position;
-static enum {STATE_WAITING, STATE_GET_ADDR, STATE_GET_DATA, STATE_SEND_DATA, STATE_DROP_DATA} i2c_transfer_state;
-static uint8_t i2c_data;
+  memset(&i2c_registers_page2, '\0', sizeof(i2c_registers_page2));
+
+  i2c_registers.page_offset = 0;
+  i2c_registers.source_HZ_ch1 = DEFAULT_SOURCE_HZ;
+  i2c_registers.version = I2C_REGISTER_VERSION;
+
+  i2c_registers_page2.page_offset = 1;
+  i2c_registers_page2.ts_cal1 = *ts_cal1;
+  i2c_registers_page2.ts_cal2 = *ts_cal2;
+  i2c_registers_page2.vrefint_cal = *vrefint_cal;
+
+  HAL_I2C_EnableListen_IT(&hi2c1);
+}
+
+uint8_t i2c_read_active() {
+  return (i2c_transfer_state == STATE_SEND_DATA) || (i2c_transfer_state == STATE_GET_ADDR);
+}
 
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
   ADD_COUNT_I2C(counter_addr);
@@ -43,16 +63,38 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
   }
 }
 
-void i2c_data_rcv(uint8_t position, uint8_t data) {
+static void change_page(uint8_t data) {
+  switch(data) {
+    case I2C_REGISTER_PAGE1:
+      current_page = &i2c_registers;
+      break;
+    case I2C_REGISTER_PAGE2:
+      current_page = &i2c_registers_page2;
+      break;
+    default:
+      current_page = &i2c_registers;
+      break;
+  }
+}
+
+static void i2c_data_rcv(uint8_t position, uint8_t data) {
   uint8_t *p = (uint8_t *)&i2c_registers;
 
   ADD_COUNT_I2C(counter_data_rcv);
-  p[position] = data;
+  switch(position) {
+    case I2C_REGISTER_OFFSET_HZ_HI:
+    case I2C_REGISTER_OFFSET_HZ_LO:
+      p[position] = data;
+      break;
+    case I2C_REGISTER_OFFSET_PAGE:
+      change_page(data);
+      break;
+  }
 }
 
-void i2c_data_xmt(I2C_HandleTypeDef *hi2c) {
+static void i2c_data_xmt(I2C_HandleTypeDef *hi2c) {
   i2c_registers.milliseconds_now = HAL_GetTick();
-  HAL_I2C_Slave_Sequential_Transmit_IT(hi2c, (uint8_t *)&i2c_registers, sizeof(i2c_registers), I2C_FIRST_FRAME);
+  HAL_I2C_Slave_Sequential_Transmit_IT(hi2c, current_page, I2C_REGISTER_PAGE_SIZE, I2C_FIRST_FRAME);
 }
 
 void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c) {

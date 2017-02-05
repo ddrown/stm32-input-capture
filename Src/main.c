@@ -38,6 +38,7 @@
 #include "uart.h"
 #include "timer.h"
 #include "i2c_slave.h"
+#include "adc.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -97,6 +98,7 @@ int main(void)
   MX_ADC_Init();
 
   /* USER CODE BEGIN 2 */
+  HAL_ADCEx_Calibration_Start(&hadc);
   i2c_slave_start();
   timer_start();
   /* USER CODE END 2 */
@@ -108,10 +110,13 @@ int main(void)
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
+
+    /* debugging code
     print_timer_status();
     i2c_show_data();
-
-    HAL_Delay(500);
+     */
+    adc_poll();
+    HAL_Delay(100);
   }
   /* USER CODE END 3 */
 
@@ -189,7 +194,7 @@ static void MX_ADC_Init(void)
   hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
   hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
-  hadc.Init.LowPowerAutoWait = DISABLE;
+  hadc.Init.LowPowerAutoWait = ENABLE;
   hadc.Init.LowPowerAutoPowerOff = DISABLE;
   hadc.Init.ContinuousConvMode = DISABLE;
   hadc.Init.DiscontinuousConvMode = DISABLE;
@@ -227,7 +232,6 @@ static void MX_ADC_Init(void)
   {
     Error_Handler();
   }
-
 }
 
 /* I2C1 init function */
