@@ -57,6 +57,7 @@ void add_adc_data(const struct i2c_registers_type *i2c_registers, const struct i
     for(uint8_t i = 0; i < (AVERAGE_SAMPLES-1); i++) {
       vrefs[i] = vrefs[i+1];
       temps[i] = temps[i+1];
+      ext_temps[i] = ext_temps[i+1];
     }
   }
 
@@ -76,7 +77,7 @@ void add_adc_data(const struct i2c_registers_type *i2c_registers, const struct i
   temps[adc_index] = (temp_voltage - v_30C) * (110 - 30) / (v_110C-v_30C) + 30.0;
 
   float ext_temp_voltage = i2c_registers_page2->external_temp/4096.0*vref;
-  ext_temps[adc_index] = (ext_temp_voltage - 0.750) * 100 + 25.0; 
+  ext_temps[adc_index] = (ext_temp_voltage - 0.750) * 100.0 + 25.0; 
 
   delay = i2c_registers->milliseconds_now - i2c_registers_page2->last_adc_ms;
 }
