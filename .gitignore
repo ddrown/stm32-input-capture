@@ -4,3 +4,7 @@ clients/pi-pwm-setup
 clients/input-capture-i2c
 clients/pcf2129
 clients/input-capture-i2c.log
+clients/pi-pwm-disable
+clients/input-capture-i2c.log.*
+clients/temp/bme280
+clients/temp/typescript*
