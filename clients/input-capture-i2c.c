@@ -5,18 +5,18 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 #include "i2c.h"
 #include "timespec.h"
 #include "i2c_registers.h"
 #include "adc_calc.h"
+#include "tcxo_calibration.h"
 
-// current code assumptions: channel 1 never stops, channel 2 is the standard to use
+// current code assumptions: channel 1 never stops
 
 #define AVERAGING_CYCLES 65
 #define PPM_INVALID -1000000.0
-// TODO: allow the average ppm to be detected or configured
-#define AVERAGE_PPM 0.0
 #define AIM_AFTER_MS 5
 #define TCXO_TEMPCOMP_TEMPFILE "/run/.tcxo"
 #define TCXO_TEMPCOMP_FILE "/run/tcxo"
@@ -37,8 +37,14 @@ void print_ppm(float ppm) {
 
 void write_tcxo_ppm(float ppm) {
   FILE *tcxo;
+  static float average_ppm = PPM_INVALID;
 
-  ppm = ppm - AVERAGE_PPM;
+  if(average_ppm <= PPM_INVALID) {
+    average_ppm = ppm;
+    return;
+  }
+
+  ppm = ppm - average_ppm;
 
   if(ppm > 10 || ppm < -10) {
     printf("- ");
@@ -202,6 +208,12 @@ void adjust_sleep_ms(uint32_t *sleep_ms, const uint32_t *this_cycles) {
   }
 }
 
+// in ppb units
+double tempcomp() {
+  float temp_f = last_temp()*9.0/5.0+32.0;
+  return (TCXO_A + TCXO_B * (temp_f - TCXO_C) + TCXO_D * pow(temp_f - TCXO_C, 2)) * 1000.0;
+}
+
 int main() {
   int fd;
   struct timespec cycles[AVERAGING_CYCLES];
@@ -214,7 +226,7 @@ int main() {
  
   fd = open_i2c(I2C_ADDR); 
 
-  printf("ts delay status sleepms cycles1 cycles2 cycles3 #pts ch1 ch2 ch3 ch2.c ch3.c t.offset 16s_ppm 64s_ppm 128s_ppm tempcomp ");
+  printf("ts delay status sleepms cycles1 cycles2 cycles3 #pts ch1 ch2 ch3 ch2.c ch3.c t.offset tempcomp 64s_ppm 128s_ppm output ");
   adc_header();
   printf("\n");
   while(1) {
@@ -223,6 +235,7 @@ int main() {
     uint8_t wrap[INPUT_CHANNELS] = {0,0,0};
     uint32_t status_flags;
     int16_t number_points;
+    double tempcomp_now;
 
     get_i2c_structs(fd, &i2c_registers, &i2c_registers_page2);
     add_adc_data(&i2c_registers, &i2c_registers_page2);
@@ -256,15 +269,18 @@ int main() {
 
     // consider channel 2 "absolute" and the other two as relative to it as long as chan2 is within 10ppm
     if(added_offset_ns[1] > -10000 && added_offset_ns[1] < 10000) {
-      added_offset_ns[0] -= added_offset_ns[1];
       added_offset_ns[2] -= added_offset_ns[1];
-      add_offset_cycles(added_offset_ns[0], cycles, &first_cycle_index, &last_cycle_index);
     } else {
       status_flags |= STATUS_CH2_FAILED;
       if(last_cycle_index != first_cycle_index) { // remove 1s from circle if there is one to remove
         first_cycle_index = (first_cycle_index + 1) % AVERAGING_CYCLES;
       }
     }
+
+    tempcomp_now = tempcomp();
+    added_offset_ns[0] -= tempcomp_now;
+    added_offset_ns[1] -= tempcomp_now;
+    add_offset_cycles(added_offset_ns[0], cycles, &first_cycle_index, &last_cycle_index);
 
     number_points = wrap_sub(last_cycle_index, first_cycle_index, AVERAGING_CYCLES);
     status_flags = status_flags | (wrap[0] & STATUS_CH1_WRAPS) | ((wrap[1] << 2) & STATUS_CH2_WRAPS) | ((wrap[3] << 4) & STATUS_CH3_WRAPS);
@@ -278,24 +294,18 @@ int main() {
        number_points
        );
     if(status_flags&STATUS_CH2_FAILED) { // added_offset_ns values are wrong
-      printf("  - %3.0f   - ", added_offset_ns[1]);
+      printf("%3.0f %3.0f  -  ", added_offset_ns[0], added_offset_ns[1]);
     } else {
-      printf("%3.0f %3.0f %3.0f ",
-	  added_offset_ns[0], added_offset_ns[1], added_offset_ns[2]
-	  );
+      printf("%3.0f %3.0f %3.0f ", added_offset_ns[0], added_offset_ns[1], added_offset_ns[2]);
     }
     printf("%3u %3u ", i2c_registers.ch2_count, i2c_registers.ch4_count);
     print_timespec(&cycles[last_cycle_index]);
-    printf(" ");
 
-    show_ppm(number_points, last_cycle_index, 16, cycles);
+    printf(" %3.0f ",tempcomp_now);
+
     show_ppm(number_points, last_cycle_index, 32, cycles);
     float ppm = show_ppm(number_points, last_cycle_index, AVERAGING_CYCLES-1, cycles);
-    if(!(status_flags&STATUS_CH2_FAILED)) { // don't update tempcomp if CH2 data is invalid
-      write_tcxo_ppm(ppm);
-    } else {
-      printf("- ");
-    }
+    write_tcxo_ppm(ppm);
 
     adc_print();
     printf("\n");
