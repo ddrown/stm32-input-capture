@@ -4,16 +4,18 @@
 #include "i2c_slave.h"
 #include "uart.h"
 #include "timer.h"
+#include "flash.h"
 
 struct i2c_registers_type i2c_registers;
 struct i2c_registers_type_page2 i2c_registers_page2;
+struct i2c_registers_type_page3 i2c_registers_page3;
 
 static void *current_page = &i2c_registers;
 
 static void i2c_data_xmt(I2C_HandleTypeDef *hi2c);
 
 static uint8_t i2c_transfer_position;
-enum {STATE_WAITING, STATE_GET_ADDR, STATE_GET_DATA, STATE_SEND_DATA, STATE_DROP_DATA} i2c_transfer_state;
+static enum {STATE_WAITING, STATE_GET_ADDR, STATE_GET_DATA, STATE_SEND_DATA, STATE_DROP_DATA} i2c_transfer_state;
 static uint8_t i2c_data;
 
 // addresses from the STM32F030 datasheet
@@ -21,28 +23,30 @@ uint16_t *ts_cal1 = (uint16_t *)0x1ffff7b8;
 uint16_t *ts_cal2 = (uint16_t *)0x1ffff7c2;
 uint16_t *vrefint_cal = (uint16_t *)0x1ffff7ba;
 
-#undef COUNT_I2C
-
-#ifdef COUNT_I2C
-static uint32_t counter_addr, counter_data_rcv, counter_rxcplt, counter_txcplt, counter_listen, counter_error, counter_abort;
-#define ADD_COUNT_I2C(counter) counter++
-#else
-#define ADD_COUNT_I2C(counter)
-#endif
-
 void i2c_slave_start() {
   memset(&i2c_registers, '\0', sizeof(i2c_registers));
 
   memset(&i2c_registers_page2, '\0', sizeof(i2c_registers_page2));
 
-  i2c_registers.page_offset = 0;
+  memset(&i2c_registers_page3, '\0', sizeof(i2c_registers_page3));
+
+  i2c_registers.page_offset = I2C_REGISTER_PAGE1;
   i2c_registers.source_HZ_ch1 = DEFAULT_SOURCE_HZ;
   i2c_registers.version = I2C_REGISTER_VERSION;
 
-  i2c_registers_page2.page_offset = 1;
+  i2c_registers_page2.page_offset = I2C_REGISTER_PAGE2;
   i2c_registers_page2.ts_cal1 = *ts_cal1;
   i2c_registers_page2.ts_cal2 = *ts_cal2;
   i2c_registers_page2.vrefint_cal = *vrefint_cal;
+
+  i2c_registers_page3.page_offset = I2C_REGISTER_PAGE3;
+  i2c_registers_page3.tcxo_a = tcxo_calibration[0];
+  i2c_registers_page3.tcxo_b = tcxo_calibration[1];
+  i2c_registers_page3.tcxo_c = tcxo_calibration[2];
+  i2c_registers_page3.tcxo_d = tcxo_calibration[3];
+  i2c_registers_page3.max_calibration_temp = tcxo_calibration[4] & 0xff;
+  i2c_registers_page3.min_calibration_temp = (tcxo_calibration[4] >> 8) & 0xff;
+  i2c_registers_page3.rmse_fit = (tcxo_calibration[4] >> 16) & 0xff;
 
   HAL_I2C_EnableListen_IT(&hi2c1);
 }
@@ -52,8 +56,6 @@ uint8_t i2c_read_active() {
 }
 
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
-  ADD_COUNT_I2C(counter_addr);
-
   if(TransferDirection == I2C_DIRECTION_TRANSMIT) { // master transmit
     i2c_transfer_state = STATE_GET_ADDR;
     HAL_I2C_Slave_Sequential_Receive_IT(hi2c, &i2c_data, 1, I2C_FIRST_FRAME);
@@ -71,6 +73,9 @@ static void change_page(uint8_t data) {
     case I2C_REGISTER_PAGE2:
       current_page = &i2c_registers_page2;
       break;
+    case I2C_REGISTER_PAGE3:
+      current_page = &i2c_registers_page3;
+      break;
     default:
       current_page = &i2c_registers;
       break;
@@ -78,17 +83,34 @@ static void change_page(uint8_t data) {
 }
 
 static void i2c_data_rcv(uint8_t position, uint8_t data) {
-  uint8_t *p = (uint8_t *)&i2c_registers;
+  if(position == I2C_REGISTER_OFFSET_PAGE) {
+    change_page(data);
+    return;
+  }
 
-  ADD_COUNT_I2C(counter_data_rcv);
-  switch(position) {
-    case I2C_REGISTER_OFFSET_HZ_HI:
-    case I2C_REGISTER_OFFSET_HZ_LO:
+  if(current_page == &i2c_registers) {
+    uint8_t *p = (uint8_t *)&i2c_registers;
+
+    switch(position) {
+      case I2C_REGISTER_OFFSET_HZ_HI:
+      case I2C_REGISTER_OFFSET_HZ_LO:
+        p[position] = data;
+        break;
+    }
+
+    return;
+  } 
+  
+  if(current_page == &i2c_registers_page3) {
+    uint8_t *p = (uint8_t *)&i2c_registers_page3;
+
+    if(position < 19) {
       p[position] = data;
-      break;
-    case I2C_REGISTER_OFFSET_PAGE:
-      change_page(data);
-      break;
+    } else if(position == 19 && data) {
+      write_flash_data();
+    }
+
+    return;
   }
 }
 
@@ -98,8 +120,6 @@ static void i2c_data_xmt(I2C_HandleTypeDef *hi2c) {
 }
 
 void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c) {
-  ADD_COUNT_I2C(counter_txcplt);
-
   if(i2c_transfer_state == STATE_DROP_DATA) { // encountered a stop/error condition
     return;
   }
@@ -109,8 +129,6 @@ void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c) {
 }
 
 void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
-  ADD_COUNT_I2C(counter_rxcplt);
-
   switch(i2c_transfer_state) {
     case STATE_GET_ADDR:
       i2c_transfer_position = i2c_data;
@@ -133,13 +151,10 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 }
 
 void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
-  ADD_COUNT_I2C(counter_listen);
   HAL_I2C_EnableListen_IT(hi2c);
 }
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
-  ADD_COUNT_I2C(counter_error);
-
   i2c_transfer_state = STATE_DROP_DATA;
 
   if(hi2c->ErrorCode != HAL_I2C_ERROR_AF) {
@@ -148,67 +163,8 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
 }
 
 void HAL_I2C_AbortCpltCallback(I2C_HandleTypeDef *hi2c) {
-  ADD_COUNT_I2C(counter_abort);
-
   i2c_transfer_state = STATE_DROP_DATA;
 }
 
 void i2c_show_data() {
-#ifdef COUNT_I2C
-  uint8_t printed = 0;
-
-  if(counter_addr > 0) {
-    write_uart_s("addr ");
-    write_uart_u(counter_addr);
-    write_uart_s(" ");
-    counter_addr = 0;
-    printed++;
-  }
-  if(counter_data_rcv > 0) {
-    write_uart_s("data_rcv ");
-    write_uart_u(counter_data_rcv);
-    write_uart_s(" ");
-    counter_data_rcv = 0;
-    printed++;
-  }
-  if(counter_rxcplt > 0) {
-    write_uart_s("rxcplt ");
-    write_uart_u(counter_rxcplt);
-    write_uart_s(" ");
-    counter_rxcplt = 0;
-    printed++;
-  }
-  if(counter_txcplt > 0) {
-    write_uart_s("txcplt ");
-    write_uart_u(counter_txcplt);
-    write_uart_s(" ");
-    counter_txcplt = 0;
-    printed++;
-  }
-  if(counter_listen > 0) {
-    write_uart_s("listen ");
-    write_uart_u(counter_listen);
-    write_uart_s(" ");
-    counter_listen = 0;
-    printed++;
-  }
-  if(counter_error > 0) {
-    write_uart_s("error ");
-    write_uart_u(counter_error);
-    write_uart_s(" ");
-    counter_error = 0;
-    printed++;
-  }
-  if(counter_abort > 0) {
-    write_uart_s("abort ");
-    write_uart_u(counter_abort);
-    write_uart_s(" ");
-    counter_abort = 0;
-    printed++;
-  }
-
-  if(printed > 0) {
-    write_uart_s("\n");
-  }
-#endif
 }

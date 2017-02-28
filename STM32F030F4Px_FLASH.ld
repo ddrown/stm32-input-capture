@@ -61,7 +61,8 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 MEMORY
 {
 RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 4K
-FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 16K
+FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 15K
+RWFLASH (rx)      : ORIGIN = 0x8003C00, LENGTH = 1K
 }
 
 /* Define output sections */
@@ -172,7 +173,12 @@ SECTIONS
     . = ALIGN(8);
   } >RAM
 
-  
+  /* the section for flash that can be erased and rewritten */
+  .rwflash :
+  {
+    . = ALIGN(4);
+    PROVIDE(start_rwflash = . );
+  } >RWFLASH
 
   /* Remove information from the standard libraries */
   /DISCARD/ :
