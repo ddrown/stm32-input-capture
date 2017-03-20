@@ -40,6 +40,7 @@ void write_tcxo_ppm(float ppm) {
   static float average_ppm = PPM_INVALID;
 
   if(average_ppm <= PPM_INVALID) {
+    printf("- ");
     average_ppm = ppm;
     return;
   }
