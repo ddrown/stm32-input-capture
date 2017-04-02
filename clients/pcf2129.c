@@ -38,22 +38,6 @@
 
 char *freqs[] = {"32k", "16k", "8k", "4k", "2k", "1k", "1", "disable"};
 
-static uint8_t read_i2c_register(int fd, uint8_t reg) {
-  write_i2c(fd, &reg, 1);
-
-  read_i2c(fd, &reg, 1);
-  return reg;
-}
-
-static void write_i2c_register(int fd, uint8_t reg, uint8_t val) {
-  uint8_t data[2];
-
-  data[0] = reg;
-  data[1] = val;
-
-  write_i2c(fd, &data, 2);
-}
-
 int main(int argc, char **argv) {
   int fd;
 

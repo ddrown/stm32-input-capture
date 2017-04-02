@@ -20,6 +20,7 @@ void get_i2c_structs(int fd, struct i2c_registers_type *i2c_registers, struct i2
   gettimeofday(&start, NULL);
   set_page[0] = I2C_REGISTER_OFFSET_PAGE;
   set_page[1] = I2C_REGISTER_PAGE1;
+  lock_i2c(fd);
   write_i2c(fd, set_page, sizeof(set_page));
   read_i2c(fd, i2c_registers, sizeof(struct i2c_registers_type));
 
@@ -28,8 +29,8 @@ void get_i2c_structs(int fd, struct i2c_registers_type *i2c_registers, struct i2
     exit(1);
   }
 
-  if(i2c_registers->version != 1) { // TODO: handle compatability
-    printf("got unexpected version: %u != %u\n", i2c_registers->version, 1);
+  if(i2c_registers->version != I2C_REGISTER_VERSION) { // TODO: handle compatability
+    printf("got unexpected version: %u != %u\n", i2c_registers->version, I2C_REGISTER_VERSION);
     exit(1);
   }
 
@@ -37,6 +38,7 @@ void get_i2c_structs(int fd, struct i2c_registers_type *i2c_registers, struct i2
   set_page[1] = I2C_REGISTER_PAGE2;
   write_i2c(fd, set_page, sizeof(set_page));
   read_i2c(fd, i2c_registers_page2, sizeof(struct i2c_registers_type_page2));
+  unlock_i2c(fd);
 
   if(i2c_registers_page2->page_offset != I2C_REGISTER_PAGE2) {
     printf("got wrong page offset: %u != %u\n", i2c_registers_page2->page_offset, I2C_REGISTER_PAGE2);

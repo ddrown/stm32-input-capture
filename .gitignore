@@ -1,10 +1,16 @@
+*.o
 build/
 .dep/
 clients/pi-pwm-setup
 clients/input-capture-i2c
+clients/set-calibration-data
 clients/pcf2129
+clients/ds3231
 clients/input-capture-i2c.log
 clients/pi-pwm-disable
 clients/input-capture-i2c.log.*
 clients/temp/bme280
 clients/temp/typescript*
+clients/*.o
+clients/timestamps-i2c
+clients/timestamps-gpio

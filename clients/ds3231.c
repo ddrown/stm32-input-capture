@@ -37,22 +37,6 @@
 #define DS3231_OUT_4KHZ DS3231_CTRL_RS2
 #define DS3231_OUT_8KHZ (DS3231_CTRL_RS1|DS3231_CTRL_RS2)
 
-static uint8_t read_i2c_register(int fd, uint8_t reg) {
-  write_i2c(fd, &reg, 1);
-
-  read_i2c(fd, &reg, 1);
-  return reg;
-}
-
-static void write_i2c_register(int fd, uint8_t reg, uint8_t val) {
-  uint8_t data[2];
-
-  data[0] = reg;
-  data[1] = val;
-
-  write_i2c(fd, &data, 2);
-}
-
 int main(int argc, char **argv) {
   int fd;
   uint8_t ctrl;

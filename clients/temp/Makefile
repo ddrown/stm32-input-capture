@@ -1,2 +1,5 @@
-bme280: bme280.c i2c.c
-	gcc -std=gnu11 -Wall -o bme280 bme280.c i2c.c
+CFLAGS=-Wall -std=gnu11 -I../
+CC=gcc
+
+bme280: bme280.o ../i2c.o
+	$(CC) $(CFLAGS) -o $@ $^

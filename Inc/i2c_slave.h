@@ -16,6 +16,7 @@ uint8_t i2c_read_active();
 #define I2C_REGISTER_PAGE1 0
 #define I2C_REGISTER_PAGE2 1
 #define I2C_REGISTER_PAGE3 2
+#define I2C_REGISTER_PAGE4 3
 
 #define I2C_REGISTER_VERSION 2
 
@@ -83,4 +84,12 @@ extern struct i2c_registers_type_page3 {
 
   uint8_t page_offset;
 } i2c_registers_page3;
+
+extern struct i2c_registers_type_page4 {
+  uint16_t tim3;
+  uint16_t tim1;
+  uint8_t reserved[27];
+  uint8_t page_offset;
+} i2c_registers_page4;
+
 #endif

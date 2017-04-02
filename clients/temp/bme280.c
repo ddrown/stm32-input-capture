@@ -96,6 +96,7 @@ void read_calibration(int fd, struct calibration_data *c) {
   uint8_t calibration_26_41[7]; // more data available here, but only 7 bytes are used
   uint8_t reg;
 
+  lock_i2c(fd);
   reg = BME280_CALIBRATION_0_25;
   write_i2c(fd, &reg, 1);
   read_i2c(fd, &calibration_0_25, sizeof(calibration_0_25));
@@ -103,6 +104,7 @@ void read_calibration(int fd, struct calibration_data *c) {
   reg = BME280_CALIBRATION_26_41;
   write_i2c(fd, &reg, 1);
   read_i2c(fd, &calibration_26_41, sizeof(calibration_26_41));
+  unlock_i2c(fd);
 
   c->T1 = calibration_0_25[0] | (calibration_0_25[1] << 8);
   c->T2 = calibration_0_25[2] | (calibration_0_25[3] << 8);
@@ -124,8 +126,11 @@ void read_calibration(int fd, struct calibration_data *c) {
 void read_raw_adc(int fd, struct raw_adc_data *r) {
   uint8_t d[8];
   uint8_t reg = BME280_PRESSURE;
+
+  lock_i2c(fd);
   write_i2c(fd, &reg, 1);
   read_i2c(fd, &d, sizeof(d));
+  unlock_i2c(fd);
 
   r->pressure = (d[2] >> 4) | (d[1] << 4) | (d[0] << 12);
   r->temp = (d[5] >> 4) | (d[4] << 4) | (d[3] << 12);
@@ -206,8 +211,10 @@ int main(int argc, char **argv) {
   if(strcmp(argv[1], "show") == 0) {
     uint8_t d[4];
     uint8_t reg = BME280_CTRL_HUMID;
+    lock_i2c(fd);
     write_i2c(fd, &reg, 1);
     read_i2c(fd, &d, sizeof(d));
+    unlock_i2c(fd);
 
     printf("ctrl_humid = %x (h=%s)\n", d[0], oversample_names[d[0] & 0b111]);
     printf("status = %x%s%s%s\n", d[1],
@@ -238,8 +245,10 @@ int main(int argc, char **argv) {
   } 
 
   if(strcmp(argv[1], "force") == 0) {
+    lock_i2c(fd);
     write_i2c_register(fd, BME280_CTRL_HUMID, CTRL_HUMID_1X);
     write_i2c_register(fd, BME280_CTRL_MEAS, CTRL_MEAS_TEMP_1X | CTRL_MEAS_PRES_1X | CTRL_MEAS_MODE_FORCED);
+    unlock_i2c(fd);
     exit(0);
   } 
 
@@ -263,11 +272,15 @@ int main(int argc, char **argv) {
     float C, F, pressure, RH;
     uint8_t status;
 
+    lock_i2c(fd);
     write_i2c_register(fd, BME280_CTRL_HUMID, CTRL_HUMID_1X);
     write_i2c_register(fd, BME280_CTRL_MEAS, CTRL_MEAS_TEMP_1X | CTRL_MEAS_PRES_1X | CTRL_MEAS_MODE_FORCED);
+    unlock_i2c(fd);
 
     usleep(20000);
+    lock_i2c(fd);
     status = read_i2c_register(fd, BME280_STATUS);
+    unlock_i2c(fd);
 
     printf("status = %x\n", status);
 
@@ -294,11 +307,15 @@ int main(int argc, char **argv) {
 
     read_calibration(fd, &c);
     while(1) {
+      lock_i2c(fd);
       write_i2c_register(fd, BME280_CTRL_HUMID, CTRL_HUMID_1X);
       write_i2c_register(fd, BME280_CTRL_MEAS, CTRL_MEAS_TEMP_1X | CTRL_MEAS_PRES_1X | CTRL_MEAS_MODE_FORCED);
+      unlock_i2c(fd);
 
       usleep(20000);
+      lock_i2c(fd);
       status = read_i2c_register(fd, BME280_STATUS);
+      unlock_i2c(fd);
 
       read_raw_adc(fd, &r);
 

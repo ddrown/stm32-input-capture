@@ -9,8 +9,9 @@
 struct i2c_registers_type i2c_registers;
 struct i2c_registers_type_page2 i2c_registers_page2;
 struct i2c_registers_type_page3 i2c_registers_page3;
+struct i2c_registers_type_page4 i2c_registers_page4;
 
-static void *current_page = &i2c_registers;
+static uint8_t current_page = I2C_REGISTER_PAGE1;
 
 static void i2c_data_xmt(I2C_HandleTypeDef *hi2c);
 
@@ -30,6 +31,8 @@ void i2c_slave_start() {
 
   memset(&i2c_registers_page3, '\0', sizeof(i2c_registers_page3));
 
+  memset(&i2c_registers_page4, '\0', sizeof(i2c_registers_page4));
+
   i2c_registers.page_offset = I2C_REGISTER_PAGE1;
   i2c_registers.source_HZ_ch1 = DEFAULT_SOURCE_HZ;
   i2c_registers.version = I2C_REGISTER_VERSION;
@@ -48,6 +51,8 @@ void i2c_slave_start() {
   i2c_registers_page3.min_calibration_temp = (tcxo_calibration[4] >> 8) & 0xff;
   i2c_registers_page3.rmse_fit = (tcxo_calibration[4] >> 16) & 0xff;
 
+  i2c_registers_page4.page_offset = I2C_REGISTER_PAGE4;
+
   HAL_I2C_EnableListen_IT(&hi2c1);
 }
 
@@ -65,58 +70,55 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
   }
 }
 
-static void change_page(uint8_t data) {
-  switch(data) {
-    case I2C_REGISTER_PAGE1:
-      current_page = &i2c_registers;
-      break;
-    case I2C_REGISTER_PAGE2:
-      current_page = &i2c_registers_page2;
-      break;
-    case I2C_REGISTER_PAGE3:
-      current_page = &i2c_registers_page3;
-      break;
-    default:
-      current_page = &i2c_registers;
-      break;
-  }
-}
-
 static void i2c_data_rcv(uint8_t position, uint8_t data) {
   if(position == I2C_REGISTER_OFFSET_PAGE) {
-    change_page(data);
+    current_page = data;
     return;
   }
 
-  if(current_page == &i2c_registers) {
-    uint8_t *p = (uint8_t *)&i2c_registers;
+  switch(current_page) {
+    case I2C_REGISTER_PAGE1:
+      uint8_t *p = (uint8_t *)&i2c_registers;
 
-    switch(position) {
-      case I2C_REGISTER_OFFSET_HZ_HI:
-      case I2C_REGISTER_OFFSET_HZ_LO:
-        p[position] = data;
-        break;
-    }
+      switch(position) {
+	case I2C_REGISTER_OFFSET_HZ_HI:
+	case I2C_REGISTER_OFFSET_HZ_LO:
+	  p[position] = data;
+	  break;
+      }
+      break;
 
-    return;
-  } 
-  
-  if(current_page == &i2c_registers_page3) {
-    uint8_t *p = (uint8_t *)&i2c_registers_page3;
+    case I2C_REGISTER_PAGE3:
+      uint8_t *p = (uint8_t *)&i2c_registers_page3;
 
-    if(position < 19) {
-      p[position] = data;
-    } else if(position == 19 && data) {
-      write_flash_data();
-    }
-
-    return;
+      if(position < 19) {
+	p[position] = data;
+      } else if(position == 19 && data) {
+	write_flash_data();
+      }
+      break;
   }
 }
 
 static void i2c_data_xmt(I2C_HandleTypeDef *hi2c) {
-  i2c_registers.milliseconds_now = HAL_GetTick();
-  HAL_I2C_Slave_Sequential_Transmit_IT(hi2c, current_page, I2C_REGISTER_PAGE_SIZE, I2C_FIRST_FRAME);
+  switch(current_page) {
+    case I2C_REGISTER_PAGE2:
+      HAL_I2C_Slave_Sequential_Transmit_IT(hi2c, &i2c_registers_page2, I2C_REGISTER_PAGE_SIZE, I2C_FIRST_FRAME);
+      break;
+    case I2C_REGISTER_PAGE3:
+      HAL_I2C_Slave_Sequential_Transmit_IT(hi2c, &i2c_registers_page3, I2C_REGISTER_PAGE_SIZE, I2C_FIRST_FRAME);
+      break;
+    case I2C_REGISTER_PAGE4:
+      i2c_registers_page4.tim3 = __HAL_TIM_GET_COUNTER(&htim3);
+      i2c_registers_page4.tim1 = __HAL_TIM_GET_COUNTER(&htim1);
+      HAL_I2C_Slave_Sequential_Transmit_IT(hi2c, &i2c_registers_page4, I2C_REGISTER_PAGE_SIZE, I2C_FIRST_FRAME);
+      break;
+    case I2C_REGISTER_PAGE1:
+    default:
+      i2c_registers.milliseconds_now = HAL_GetTick();
+      HAL_I2C_Slave_Sequential_Transmit_IT(hi2c, &i2c_registers, I2C_REGISTER_PAGE_SIZE, I2C_FIRST_FRAME);
+      break;
+  }
 }
 
 void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c) {
